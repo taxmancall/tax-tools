@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>특수관계인 시가 계산기</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,'Malgun Gothic',sans-serif;background:#f4f6fb;color:#1a1d23;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem}
+.app{width:100%;max-width:700px}
+h1{font-size:20px;font-weight:700;color:#0f2a4a;margin-bottom:4px}
+.subtitle{font-size:12px;color:#6b7a90;margin-bottom:1.5rem}
+.progress-bar{display:flex;gap:6px;margin-bottom:2rem}
+.prog-item{flex:1}
+.prog-track{height:4px;border-radius:2px;background:#dde3ed;transition:background .3s}
+.prog-track.active{background:#1a5cb8}
+.prog-label{font-size:10px;color:#9aaabb;margin-top:3px}
+.prog-label.active{color:#1a5cb8;font-weight:600}
+.card{background:#fff;border-radius:14px;padding:1.5rem;margin-bottom:14px;border:1px solid #e4eaf3;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.card-title{font-size:14px;font-weight:700;color:#0f2a4a;margin-bottom:1rem}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.grid2{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.type-btn{border:1.5px solid #dde3ed;border-radius:12px;padding:1.25rem 1rem;cursor:pointer;text-align:center;background:#fff;transition:all .15s}
+.type-btn:hover{border-color:#6a9be0;background:#f0f6ff}
+.type-btn.selected{border-color:#1a5cb8;background:#eaf2ff}
+.type-btn .icon{font-size:28px;margin-bottom:6px}
+.type-btn .name{font-size:15px;font-weight:700;color:#0f2a4a}
+.type-btn .desc{font-size:11px;color:#6b7a90;margin-top:2px}
+.sub-btn{border:1px solid #dde3ed;border-radius:10px;padding:10px 14px;cursor:pointer;text-align:left;background:#f8fafd;transition:all .15s}
+.sub-btn:hover{border-color:#6a9be0;background:#f0f6ff}
+.sub-btn.selected{border-color:#1a5cb8;background:#eaf2ff}
+.sub-btn .sname{font-size:13px;font-weight:700;color:#0f2a4a}
+.sub-btn .sdesc{font-size:11px;color:#6b7a90}
+.info-box{background:#f0f6ff;border:1px solid #c2d8f5;border-radius:10px;padding:12px 14px;margin-top:10px}
+.info-law{font-size:11px;color:#1a5cb8;font-weight:700;margin-bottom:4px}
+.info-rule{font-size:13px;font-weight:700;color:#0f2a4a;margin-bottom:4px}
+.info-detail{font-size:12px;color:#4a6080;line-height:1.6}
+.period-box{background:#e8f5ef;border:1px solid #9fd8bb;border-radius:10px;padding:12px 14px;margin-top:10px}
+.period-title{font-size:11px;color:#1a7a4a;font-weight:700;margin-bottom:6px}
+.period-dates{font-size:15px;font-weight:700;color:#0a4d2e;letter-spacing:.5px}
+.period-note{font-size:11px;color:#2a9a60;margin-top:3px}
+label{font-size:12px;color:#6b7a90;display:block;margin-bottom:5px;font-weight:600}
+input[type=date],input[type=text]{width:100%;padding:10px 12px;border:1.5px solid #dde3ed;border-radius:8px;font-size:14px;color:#1a1d23;background:#fff;outline:none;font-family:inherit;transition:border .15s}
+input[type=date]:focus,input[type=text]:focus{border-color:#1a5cb8;box-shadow:0 0 0 3px #daeaff}
+.rel-btn{border:1px solid #dde3ed;border-radius:10px;padding:10px 14px;cursor:pointer;text-align:left;background:#fff;display:flex;align-items:center;justify-content:space-between;transition:all .15s;margin-bottom:5px}
+.rel-btn:hover{border-color:#6a9be0;background:#f0f6ff}
+.rel-btn.selected{border-color:#1a5cb8;background:#eaf2ff}
+.rel-label{font-size:13px;font-weight:700;color:#0f2a4a}
+.rel-detail{font-size:11px;color:#6b7a90}
+.badges{display:flex;gap:4px}
+.badge{font-size:10px;padding:3px 7px;border-radius:5px;font-weight:700}
+.badge-y{background:#e8f5ef;color:#1a7a4a}
+.badge-n{background:#f2f2f2;color:#aaa}
+.warn-box{background:#fff5f5;border:1px solid #f5c2c2;border-radius:10px;padding:12px 14px;margin-top:6px}
+.warn-title{font-size:13px;font-weight:700;color:#c23030;margin-bottom:4px}
+.warn-item{font-size:12px;color:#8a2020;margin-top:3px}
+.ok-box{background:#e8f5ef;border:1px solid #9fd8bb;border-radius:10px;padding:12px 14px;margin-top:6px}
+.ok-text{font-size:13px;color:#0a5c34;font-weight:600}
+.price-method-btn{border:1px solid #dde3ed;border-radius:10px;padding:10px 12px;cursor:pointer;text-align:left;background:#f8fafd;transition:all .15s}
+.price-method-btn:hover{border-color:#6a9be0;background:#f0f6ff}
+.price-method-btn.selected{border-color:#1a5cb8;background:#eaf2ff}
+.price-method-btn .pname{font-size:13px;font-weight:700;color:#0f2a4a}
+.price-method-btn .pdesc{font-size:11px;color:#6b7a90}
+.result-section{margin-bottom:14px}
+.result-header{font-size:14px;font-weight:700;color:#0f2a4a;margin-bottom:8px;border-left:3px solid #1a5cb8;padding-left:10px}
+.result-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f0f2f6;font-size:13px}
+.result-row:last-child{border-bottom:none}
+.result-key{color:#6b7a90}
+.result-val{font-weight:700;color:#0f2a4a}
+.safe-box{background:linear-gradient(135deg,#e8f5ef 0%,#d0f0e0 100%);border:1.5px solid #5cb887;border-radius:12px;padding:16px 18px;text-align:center}
+.safe-label{font-size:12px;color:#1a7a4a;font-weight:700;margin-bottom:6px}
+.safe-amount{font-size:24px;font-weight:800;color:#0a4d2e;letter-spacing:-0.5px}
+.safe-note{font-size:11px;color:#2a9a60;margin-top:4px}
+.check-bad{background:#fff5f5;border:1px solid #f5c2c2;border-radius:10px;padding:12px 14px}
+.check-good{background:#e8f5ef;border:1px solid #9fd8bb;border-radius:10px;padding:12px 14px}
+.check-row{display:flex;justify-content:space-between;align-items:center}
+.check-main{font-size:13px;font-weight:700}
+.check-bad .check-main{color:#c23030}
+.check-good .check-main{color:#1a7a4a}
+.check-sub{font-size:11px;margin-top:4px}
+.check-bad .check-sub{color:#8a2020}
+.check-good .check-sub{color:#2a9a60}
+.check-side{font-size:12px;font-weight:700}
+.check-bad .check-side{color:#c23030}
+.check-good .check-side{color:#1a7a4a}
+.gift-calc{background:#fff8ee;border:1px solid #f5d88a;border-radius:8px;padding:10px 12px;margin-top:8px;font-size:12px;color:#8a5a10}
+.btn-row{display:flex;gap:8px;margin-top:16px}
+.btn{flex:1;padding:11px 16px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;border:1.5px solid #dde3ed;background:#fff;color:#4a6080;transition:all .15s;font-family:inherit}
+.btn:hover{border-color:#1a5cb8;color:#1a5cb8}
+.btn.primary{background:#1a5cb8;color:#fff;border-color:#1a5cb8;flex:2}
+.btn.primary:hover{background:#1349a0}
+.btn.primary:disabled{background:#9aaabb;border-color:#9aaabb;cursor:not-allowed}
+.btn.reset{background:#f4f6fb;color:#6b7a90}
+.money-display{font-size:12px;color:#6b7a90;margin-top:4px}
+.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.summary-item{background:#f8fafd;border-radius:8px;padding:8px 10px}
+.summary-key{font-size:10px;color:#9aaabb;margin-bottom:2px}
+.summary-val{font-size:12px;font-weight:700;color:#0f2a4a}
+.tax-block{border:1px solid #dde3ed;border-radius:10px;padding:12px 14px;margin-bottom:8px}
+.tax-block-title{font-size:12px;font-weight:700;color:#1a5cb8;margin-bottom:2px}
+.tax-block-law{font-size:10px;color:#9aaabb;margin-bottom:8px}
+.tax-detail-row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0}
+.tax-detail-key{color:#6b7a90}
+.tax-detail-val{font-weight:700;color:#0f2a4a}
+.section-divider{height:1px;background:#eef0f5;margin:12px 0}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>특수관계인 시가 계산기</h1>
+  <p class="subtitle">양도 · 상속 · 증여 시가 판단 및 저가거래 안전금액 분석 | 소득세법 · 상증세법 기반</p>
+
+  <div class="progress-bar" id="progressBar"></div>
+  <div id="stepContent"></div>
+</div>
+
+<script>
+const STEPS = ['거래유형','기준일자','특수관계인','시가 정보','분석 결과'];
+
+const DATE_RULES = {
+  양도:{
+    일반매매:{rule:'잔금청산일과 등기접수일 중 빠른 날',law:'소득세법 §98①',detail:'계약금·중도금·잔금 순으로 지급 시, 잔금을 받은 날. 단 잔금 수령 전 등기를 먼저 한 경우에는 등기접수일이 양도일.'},
+    신축:{rule:'사용승인일 / 사실상 사용일 / 임시사용승인일 중 빠른 날',law:'소득세법 §98①',detail:'사용승인 전 입주한 경우 사실상 사용일. 임시사용승인만 있는 경우 임시사용승인일.'},
+    분양권:{rule:'분양권 양도에 따른 잔금청산일',law:'소득세법 §98①, §94①2',detail:'분양권 자체를 양도하는 경우, 매수인으로부터 잔금을 받은 날. 명의변경일이 아님에 주의.'},
+    입주권:{rule:'관리처분계획인가일(청산 전) 또는 잔금청산일(청산 후)',law:'소득세법 §98①, §89①4',detail:'청산금 수령 전 양도 시 관리처분계획인가일. 청산 완료 후 입주권 형태로 양도 시 잔금청산일.'}
+  },
+  상속:{rule:'피상속인의 사망일',law:'상증세법 §2①, 민법 §997',detail:'상속은 피상속인이 사망한 때 개시. 실종선고의 경우 실종선고일이 기준. 동시사망 추정 시 각자 별도 상속개시.'},
+  증여:{rule:'증여계약일 또는 등기접수일',law:'상증세법 §31①, §33',detail:'부동산의 경우 등기접수일. 금전·동산 등은 실제 증여 인도일. 부동산 증여 계약일 기준으로 오인하기 쉬우니 주의.'}
+};
+
+const EVAL_PERIODS = {
+  양도:{before:3,after:3,law:'소득세법 시행령 §176의2①'},
+  상속:{before:6,after:6,law:'상증세법 §49①'},
+  증여:{before:6,after:3,law:'상증세법 §49①'}
+};
+
+const SUBTYPES = [
+  {id:'일반매매',name:'일반 매매',desc:'부동산 일반 거래'},
+  {id:'신축',name:'신축 건물',desc:'신규 건축 완공'},
+  {id:'분양권',name:'분양권',desc:'아파트 등 분양권'},
+  {id:'입주권',name:'입주권',desc:'재개발·재건축 입주권'}
+];
+
+const RELATIONS = [
+  {id:'배우자',label:'배우자',detail:'사실상 혼인관계 포함',양:true,상:true},
+  {id:'직계존속',label:'직계존속',detail:'부모·조부모 등',양:true,상:true},
+  {id:'직계비속',label:'직계비속',detail:'자녀·손자녀 등',양:true,상:true},
+  {id:'배우자직계존속',label:'배우자의 직계존속',detail:'장인·장모·시부·시모 등',양:true,상:true},
+  {id:'배우자직계비속',label:'배우자의 직계비속',detail:'배우자의 자녀 등',양:true,상:true},
+  {id:'형제자매',label:'형제자매',detail:'',양:true,상:true},
+  {id:'배우자형제',label:'배우자의 형제자매',detail:'시형제·처형제 — 3촌 이내 인척',양:true,상:true},
+  {id:'4촌혈족',label:'4촌 이내 혈족',detail:'상증세법만 해당 (양도세 제외)',양:false,상:true},
+  {id:'3촌인척',label:'3촌 이내 인척',detail:'상증세법만 해당 (배우자형제 제외)',양:false,상:true},
+  {id:'생계친족',label:'생계를 같이하는 친족',detail:'소득세법(양도세)만 해당',양:true,상:false},
+  {id:'없음',label:'특수관계 없음 (제3자)',detail:'',양:false,상:false}
+];
+
+const PRICE_METHODS = [
+  {id:'유사매매',name:'유사매매사례가액',desc:'평가기간 내 유사 물건 실거래가',law:'소득세법 시행령 §176의2 / 상증세법 §49'},
+  {id:'감정평가',name:'감정평가액',desc:'공인 감정기관 2곳 평균액',law:'소득세법 시행령 §176의2③ / 상증세법 §49'},
+  {id:'공시지가',name:'공시가격(기준시가)',desc:'국토부 공시가격 또는 국세청 기준시가',law:'소득세법 §99 / 상증세법 §60③'},
+  {id:'전월세환산',name:'전·월세환산가액',desc:'전·월세 환산 시가',law:'상증세법 §61④'}
+];
+
+let S = {
+  step:0, txType:'', subType:'일반매매', baseDate:'',
+  relation:'', priceMethod:'유사매매', marketPrice:'', tradePrice:''
+};
+
+function fmt(n){
+  if(!n||isNaN(n))return '-';
+  return Math.round(n).toLocaleString('ko-KR')+'원';
+}
+function fmtShort(n){
+  if(!n||isNaN(n))return '-';
+  const v=Math.round(n);
+  if(v>=100000000)return (v/100000000).toFixed(2)+'억원';
+  if(v>=10000000)return (v/10000000).toFixed(0)+'천만원';
+  return v.toLocaleString('ko-KR')+'원';
+}
+function addMonths(dateStr,m){
+  const d=new Date(dateStr);d.setMonth(d.getMonth()+m);return d.toISOString().split('T')[0];
+}
+function subMonths(dateStr,m){
+  const d=new Date(dateStr);d.setMonth(d.getMonth()-m);return d.toISOString().split('T')[0];
+}
+function calcSafe(시가){
+  const 양도임계=Math.min(시가*0.05,300000000);
+  const 양도최저=시가-양도임계;
+  const 증여임계=Math.min(시가*0.30,300000000);
+  const 증여최저=시가-증여임계;
+  return{양도임계,양도최저,증여임계,증여최저,안전최저:Math.max(양도최저,증여최저)};
+}
+
+function renderProgress(){
+  document.getElementById('progressBar').innerHTML=STEPS.map((s,i)=>`
+    <div class="prog-item">
+      <div class="prog-track ${i<=S.step?'active':''}"></div>
+      <div class="prog-label ${i<=S.step?'active':''}">${s}</div>
+    </div>`).join('');
+}
+
+function renderStep(){
+  const el=document.getElementById('stepContent');
+  if(S.step===0)el.innerHTML=renderStep0();
+  else if(S.step===1)el.innerHTML=renderStep1();
+  else if(S.step===2)el.innerHTML=renderStep2();
+  else if(S.step===3)el.innerHTML=renderStep3();
+  else if(S.step===4)el.innerHTML=renderStep4();
+  attachEvents();
+}
+
+function renderStep0(){
+  return `<div class="card">
+    <div class="card-title">거래 유형을 선택하세요</div>
+    <div class="grid3">
+      ${[{id:'양도',icon:'🏠',name:'양도소득세',desc:'부동산·분양권 양도'},
+         {id:'상속',icon:'📋',name:'상속세',desc:'상속재산 시가 평가'},
+         {id:'증여',icon:'🎁',name:'증여세',desc:'증여재산 시가 평가'}]
+        .map(t=>`<button class="type-btn ${S.txType===t.id?'selected':''}" onclick="pick('txType','${t.id}');go(1)">
+          <div class="icon">${t.icon}</div>
+          <div class="name">${t.name}</div>
+          <div class="desc">${t.desc}</div>
+        </button>`).join('')}
+    </div>
+  </div>`;
+}
+
+function renderStep1(){
+  const period=S.txType?EVAL_PERIODS[S.txType]:null;
+  const evalStart=S.baseDate&&period?subMonths(S.baseDate,period.before):'';
+  const evalEnd=S.baseDate&&period?addMonths(S.baseDate,period.after):'';
+  const rules=S.txType==='양도'?DATE_RULES.양도[S.subType]:DATE_RULES[S.txType];
+  
+  return `<div class="card">
+    ${S.txType==='양도'?`
+    <div class="card-title">양도 세부 유형</div>
+    <div class="grid2">
+      ${SUBTYPES.map(st=>`<button class="sub-btn ${S.subType===st.id?'selected':''}" onclick="pick('subType','${st.id}');rerender()">
+        <div class="sname">${st.name}</div>
+        <div class="sdesc">${st.desc}</div>
+      </button>`).join('')}
+    </div>
+    <div class="section-divider"></div>
+    `:''}
+    <div class="card-title">${S.txType==='양도'?'잔금일(기준일) 입력':'기준일자 입력'}</div>
+    <label>${S.txType==='양도'?'양도일 (잔금청산일 또는 등기접수일 中 빠른 날)':S.txType==='상속'?'상속개시일 (피상속인 사망일)':'증여일 (등기접수일)'}</label>
+    <input type="date" id="baseDate" value="${S.baseDate}" onchange="pick('baseDate',this.value);rerender()">
+    
+    ${rules?`<div class="info-box">
+      <div class="info-law">${rules.law}</div>
+      <div class="info-rule">📌 ${rules.rule}</div>
+      <div class="info-detail">${rules.detail}</div>
+    </div>`:''}
+    
+    ${evalStart?`<div class="period-box">
+      <div class="period-title">📅 시가 평가기간 (${period.law})</div>
+      <div class="period-dates">${evalStart} ~ ${evalEnd}</div>
+      <div class="period-note">기준일 기준 전 ${period.before}개월 ~ 후 ${period.after}개월 이내 거래 · 감정이 시가로 인정</div>
+    </div>`:''}
+  </div>
+  <div class="btn-row">
+    <button class="btn" onclick="go(0)">← 이전</button>
+    <button class="btn primary" onclick="go(2)" ${!S.baseDate?'disabled':''}>다음 →</button>
+  </div>`;
+}
+
+function renderStep2(){
+  const sel=RELATIONS.find(r=>r.id===S.relation);
+  const isSpecialYang=sel?.양||false;
+  const isSpecialSang=sel?.상||false;
+  return `<div class="card">
+    <div class="card-title">매도인(증여자)과 매수인(수증자)의 관계</div>
+    <div style="font-size:11px;color:#9aaabb;margin-bottom:12px">소득세법 시행령 §98 · 상증세법 시행령 §2의2</div>
+    ${RELATIONS.map(r=>`
+      <button class="rel-btn ${S.relation===r.id?'selected':''}" onclick="pick('relation','${r.id}');rerender()">
+        <div>
+          <div class="rel-label">${r.label}</div>
+          ${r.detail?`<div class="rel-detail">${r.detail}</div>`:''}
+        </div>
+        <div class="badges">
+          <span class="badge ${r.양?'badge-y':'badge-n'}">양도세${r.양?'✓':'✗'}</span>
+          <span class="badge ${r.상?'badge-y':'badge-n'}">상증세${r.상?'✓':'✗'}</span>
+        </div>
+      </button>`).join('')}
+    
+    ${sel&&sel.id!=='없음'?`<div class="warn-box">
+      <div class="warn-title">⚠️ 특수관계인 거래 — 다음 규정 검토 필요</div>
+      ${isSpecialYang?'<div class="warn-item">• 양도소득세: 부당행위계산 부인 적용 가능 (소득세법 §101, 시행령 §167①1)</div>':''}
+      ${isSpecialSang?'<div class="warn-item">• 증여세: 저가양수도에 따른 증여 의제 적용 가능 (상증세법 §35②)</div>':''}
+    </div>`:sel?.id==='없음'?`<div class="ok-box">
+      <div class="ok-text">✅ 제3자 간 거래 — 특수관계인 규정 적용 없음. 부당행위계산 부인 및 증여 의제 문제 없음.</div>
+    </div>`:''}
+  </div>
+  <div class="btn-row">
+    <button class="btn" onclick="go(1)">← 이전</button>
+    <button class="btn primary" onclick="go(3)" ${!S.relation?'disabled':''}>다음 →</button>
+  </div>`;
+}
+
+function renderStep3(){
+  const sel=RELATIONS.find(r=>r.id===S.relation);
+  const isSpecial=(sel?.양||sel?.상)&&sel?.id!=='없음';
+  const 시가=parseFloat(S.marketPrice.replace(/,/g,''))||0;
+  const 거래=parseFloat(S.tradePrice.replace(/,/g,''))||0;
+  return `<div class="card">
+    <div class="card-title">시가 산정 방법 선택</div>
+    <div class="grid2">
+      ${PRICE_METHODS.map(m=>`<button class="price-method-btn ${S.priceMethod===m.id?'selected':''}" onclick="pick('priceMethod','${m.id}');rerender()">
+        <div class="pname">${m.name}</div>
+        <div class="pdesc">${m.desc}</div>
+        <div style="font-size:10px;color:#9aaabb;margin-top:3px">${m.law}</div>
+      </button>`).join('')}
+    </div>
+    ${S.priceMethod==='유사매매'?`<div class="info-box" style="margin-top:10px">
+      <div class="info-law">유사매매사례가액 적용 요건 (소득세법 시행령 §176의2, 상증세법 §49)</div>
+      <div class="info-detail">① 평가기간 내 거래된 물건<br>② 면적·위치·용도·종목이 동일하거나 유사한 다른 물건<br>③ 해당 물건의 거래가액이 시가로 인정<br>④ 2 이상인 경우 평가기준일과 가장 가까운 날의 가액 적용</div>
+    </div>`:''}
+    ${S.priceMethod==='감정평가'?`<div class="info-box" style="margin-top:10px">
+      <div class="info-law">감정평가액 (소득세법 시행령 §176의2②, 상증세법 §49②)</div>
+      <div class="info-detail">• 2 이상의 공인 감정기관 감정가액의 평균액<br>• 양도세: 양도일·취득일 전후 3개월 이내 감정가<br>• 상증세: 평가기간 내 감정가 (단, 소급감정 주의)</div>
+    </div>`:''}
+  </div>
+  <div class="card">
+    <label>시가 금액 (원) — ${PRICE_METHODS.find(m=>m.id===S.priceMethod)?.name}</label>
+    <input type="text" id="marketPrice" value="${S.marketPrice}" placeholder="예: 185,000,000" oninput="fmtInput(this,'marketPrice')">
+    ${시가?`<div class="money-display">= ${fmtShort(시가)} (${시가.toLocaleString('ko-KR')}원)</div>`:''}
+    
+    ${isSpecial?`
+    <div class="section-divider"></div>
+    <label style="margin-top:8px">실제 거래 예정가격 (원) — 저가양도 판단용 <span style="font-weight:400;color:#9aaabb">(입력 시 판단 가능)</span></label>
+    <input type="text" id="tradePrice" value="${S.tradePrice}" placeholder="예: 160,000,000" oninput="fmtInput(this,'tradePrice')">
+    ${거래?`<div class="money-display">= ${fmtShort(거래)} (${거래.toLocaleString('ko-KR')}원)</div>`:''}
+    `:''}
+  </div>
+  <div class="btn-row">
+    <button class="btn" onclick="go(2)">← 이전</button>
+    <button class="btn primary" onclick="go(4)" ${!S.marketPrice?'disabled':''}>결과 분석 →</button>
+  </div>`;
+}
+
+function renderStep4(){
+  const 시가=parseFloat(S.marketPrice.replace(/,/g,''))||0;
+  const 거래=parseFloat(S.tradePrice.replace(/,/g,''))||0;
+  if(!시가)return '<div class="card">시가를 입력해주세요.</div>';
+  const r=calcSafe(시가);
+  const sel=RELATIONS.find(x=>x.id===S.relation);
+  const isSpecialYang=sel?.양&&sel?.id!=='없음';
+  const isSpecialSang=sel?.상&&sel?.id!=='없음';
+  const period=EVAL_PERIODS[S.txType];
+  const evalStart=subMonths(S.baseDate,period.before);
+  const evalEnd=addMonths(S.baseDate,period.after);
+  const hasTradeCheck=거래>0&&sel?.id!=='없음';
+  const 차이=시가-거래;
+  const 양도부당행위=hasTradeCheck&&(차이>=r.양도임계);
+  const 증여의제=hasTradeCheck&&(차이>=r.증여임계);
+  const 증여재산가액=hasTradeCheck&&증여의제?(차이-r.증여임계):0;
+  const 시가대비거래율=hasTradeCheck?(거래/시가*100):0;
+
+  return `<div class="card">
+    <div class="card-title">거래 개요</div>
+    <div class="summary-grid">
+      <div class="summary-item">
+        <div class="summary-key">거래 유형</div>
+        <div class="summary-val">${S.txType}${S.txType==='양도'?' ('+S.subType+')':''}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-key">기준일자</div>
+        <div class="summary-val">${S.baseDate}</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-key">특수관계인</div>
+        <div class="summary-val" style="color:${sel?.id==='없음'?'#1a7a4a':'#c23030'}">${sel?.id==='없음'?'없음':sel?.label}</div>
+      </div>
+    </div>
+    <div class="period-box">
+      <div class="period-title">📅 시가 평가기간 (${period.law})</div>
+      <div class="period-dates">${evalStart} ~ ${evalEnd}</div>
+      <div class="period-note">기준일 기준 전 ${period.before}개월 ~ 후 ${period.after}개월</div>
+    </div>
+  </div>
+
+  ${sel?.id!=='없음'?`
+  <div class="card">
+    <div class="result-header">저가거래 안전금액 분석</div>
+    
+    <div class="tax-block">
+      <div class="tax-block-title">① 양도소득세 — 부당행위계산 부인</div>
+      <div class="tax-block-law">소득세법 §101, 시행령 §167①1호 | 적용대상: ${isSpecialYang?'해당 (특관인)':'비해당 (특관 아님)'}</div>
+      <div class="tax-detail-row">
+        <span class="tax-detail-key">시가</span>
+        <span class="tax-detail-val">${fmt(시가)}</span>
+      </div>
+      <div class="tax-detail-row">
+        <span class="tax-detail-key">임계치 Min(시가×5%, 3억원)</span>
+        <span class="tax-detail-val">${fmt(r.양도임계)}</span>
+      </div>
+      <div class="tax-detail-row" style="border-top:1.5px solid #dde3ed;padding-top:6px;margin-top:2px">
+        <span class="tax-detail-key" style="font-weight:700;color:#0f2a4a">양도세 최저 안전가액</span>
+        <span class="tax-detail-val" style="color:#1a5cb8;font-size:14px">${fmt(r.양도최저)} 이상</span>
+      </div>
+    </div>
+
+    <div class="tax-block">
+      <div class="tax-block-title">② 증여세 — 저가양수도 증여 의제</div>
+      <div class="tax-block-law">상증세법 §35② | 적용대상: ${isSpecialSang?'해당 (특관인)':'비해당 (특관 아님)'}</div>
+      <div class="tax-detail-row">
+        <span class="tax-detail-key">시가</span>
+        <span class="tax-detail-val">${fmt(시가)}</span>
+      </div>
+      <div class="tax-detail-row">
+        <span class="tax-detail-key">임계치 Min(시가×30%, 3억원)</span>
+        <span class="tax-detail-val">${fmt(r.증여임계)}</span>
+      </div>
+      <div class="tax-detail-row" style="border-top:1.5px solid #dde3ed;padding-top:6px;margin-top:2px">
+        <span class="tax-detail-key" style="font-weight:700;color:#0f2a4a">증여세 최저 안전가액</span>
+        <span class="tax-detail-val" style="color:#854F0B;font-size:14px">${fmt(r.증여최저)} 이상</span>
+      </div>
+    </div>
+
+    <div class="safe-box">
+      <div class="safe-label">✅ 양도세 + 증여세 두 세목 모두 안전한 최저 거래가액</div>
+      <div class="safe-amount">${fmt(r.안전최저)} 이상</div>
+      <div class="safe-note">더 엄격한 기준(양도세 95% 룰) 적용 | 시가 대비 ${(r.안전최저/시가*100).toFixed(1)}% 이상</div>
+    </div>
+  </div>
+  `:`<div class="card"><div class="ok-box"><div class="ok-text">✅ 제3자 간 거래로 부당행위계산 부인 및 저가양수도 증여 의제 규정이 적용되지 않습니다. 시가 ${fmt(시가)}로 거래 가능합니다.</div></div></div>`}
+
+  ${hasTradeCheck&&sel?.id!=='없음'?`
+  <div class="card">
+    <div class="result-header">예정 거래가 검토 결과</div>
+    <div class="result-row">
+      <span class="result-key">예정 거래가</span>
+      <span class="result-val">${fmt(거래)} (시가의 ${시가대비거래율.toFixed(1)}%)</span>
+    </div>
+    <div class="result-row">
+      <span class="result-key">시가 차이 (할인액)</span>
+      <span class="result-val" style="color:${차이>0?'#c23030':'#1a7a4a'}">${fmt(차이)}</span>
+    </div>
+    <div class="section-divider"></div>
+
+    <div class="${양도부당행위?'check-bad':'check-good'}" style="margin-bottom:8px">
+      <div class="check-row">
+        <span class="check-main">${양도부당행위?'❌ 양도소득세 부당행위 해당':'✅ 양도소득세 부당행위 미해당'}</span>
+        <span class="check-side">${fmt(차이)} ${양도부당행위?'≥':'<'} ${fmt(r.양도임계)}</span>
+      </div>
+      <div class="check-sub">${양도부당행위?'시가('+fmt(시가)+')를 양도가액으로 보아 양도소득세 계산 (소득세법 §101)':'양도 차이가 Min(시가×5%, 3억) 미만 — 부당행위계산 부인 미적용'}</div>
+    </div>
+
+    <div class="${증여의제?'check-bad':'check-good'}">
+      <div class="check-row">
+        <span class="check-main">${증여의제?'❌ 증여세 저가양수도 의제 해당':'✅ 증여세 저가양수도 의제 미해당'}</span>
+        <span class="check-side">${fmt(차이)} ${증여의제?'≥':'<'} ${fmt(r.증여임계)}</span>
+      </div>
+      <div class="check-sub">${증여의제?'저가양수도 증여 의제 발생 (상증세법 §35②)':'양도 차이가 Min(시가×30%, 3억) 미만 — 증여 의제 미적용'}</div>
+      ${증여의제?`<div class="gift-calc">
+        증여재산가액 = (시가 - 거래가) - Min(시가×30%, 3억원)<br>
+        = ${fmt(차이)} - ${fmt(r.증여임계)} = <strong>${fmt(증여재산가액)}</strong>
+      </div>`:''}
+    </div>
+  </div>`:''}
+
+  <div class="btn-row">
+    <button class="btn" onclick="go(3)">← 수정</button>
+    <button class="btn reset" onclick="resetAll()">처음부터</button>
+  </div>`;
+}
+
+function pick(k,v){S[k]=v;}
+function go(n){S.step=n;render();}
+function rerender(){render();}
+function resetAll(){S={step:0,txType:'',subType:'일반매매',baseDate:'',relation:'',priceMethod:'유사매매',marketPrice:'',tradePrice:''};render();}
+function fmtInput(el,key){
+  let raw=el.value.replace(/[^0-9]/g,'');
+  let formatted=raw.replace(/\B(?=(\d{3})+(?!\d))/g,',');
+  el.value=formatted;S[key]=formatted;
+}
+function attachEvents(){}
+
+function render(){renderProgress();renderStep();}
+render();
+</script>
+</body>
+</html>
