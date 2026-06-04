@@ -158,7 +158,7 @@ function determineSiga(){
   if(dep>0||mon>0){const rentA=mon>0&&rate>0?Math.round(dep+(mon*12/(rate/100))):dep;if(rentA>0)items.push({rank:3,name:'전·월세 환산가액',date:null,amt:rentA,valid:true,days:null,law:'상증세법 §61④',reason:`보증금 ${fmt(dep)} + 월세 ${fmt(mon)} × 12 ÷ 이율${rate}%`});}
   const gs=pInt(S.gongsi);
   if(gs>0)items.push({rank:4,name:'기준시가(공시지가)',date:null,amt:gs,valid:true,days:null,law:'소득세법 §99 / 상증세법 §60③',reason:'최후 보충적 적용'});
-  const valid=items.filter(x=>x.valid&&x.amt>0).sort((a,b)=>a.rank-b.rank||(a.days??999)-(b.days??999));
+  const valid=items.filter(x=>x.valid&&x.amt>0).sort((a,b)=>{const da=a.days??999,db=b.days??999;if(da!==db)return da-db;return a.rank-b.rank;});
   return{items,adopted:valid[0]||null,s,e};
 }
 function renderProg(){document.getElementById('pb').innerHTML=STEPS.map((s,i)=>`<div class="pi"><div class="pt ${i<=S.step?'on':''}"></div><div class="pl ${i<=S.step?'on':''}">${s}</div></div>`).join('');}
