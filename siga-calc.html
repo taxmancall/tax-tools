@@ -149,7 +149,16 @@ const RELS=[
   {id:'생계친족',l:'생계를 같이하는 친족',d:'소득세법(양도세)만 해당',y:true,s:false},
   {id:'없음',l:'특수관계 없음 (제3자)',d:'',y:false,s:false}
 ];
-let S={step:0,tx:'',sub:'일반매매',dt:'',rel:'',sim_date:'',sim_amt:'',ga1_date:'',ga1_amt:'',ga2_date:'',ga2_amt:'',rent_dep:'',rent_mon:'',rent_rate:'',gongsi:'',tp:'',acq_amt:'',acq_date:'',nec_amt:'',adj_area:'N',house_cnt:'1',mitigate:false};
+/* ===== 사무소 정보 (보고서 상단에 표시됩니다 — 필요시 아래 값만 수정하세요) ===== */
+const FIRM={
+  name:'원제우세무사사무소',
+  rep:'원제우 세무사',
+  addr:'주소를 입력하세요 (예: 서울특별시 ○○구 ○○로 00, 0층)',
+  tel:'전화번호를 입력하세요 (예: 02-000-0000)',
+  email:'',
+  logo:'稅' // 로고 이미지가 있으면 이 값을 <img src="data:image/png;base64,...">로 교체하세요
+};
+let S={step:0,tx:'',sub:'일반매매',dt:'',rel:'',sim_date:'',sim_amt:'',ga1_date:'',ga1_amt:'',ga2_date:'',ga2_amt:'',rent_dep:'',rent_mon:'',rent_rate:'',gongsi:'',tp:'',acq_amt:'',acq_date:'',nec_amt:'',adj_area:'N',house_cnt:'1',mitigate:false,exempt1:'N',live_yr:'',buy_house_cnt:'1',area85:'N'};
 const fmt=n=>n&&!isNaN(n)?Math.round(n).toLocaleString('ko-KR')+'원':'-';
 const fmtS=n=>{if(!n||isNaN(n))return '-';const v=Math.round(n);return v>=100000000?(v/100000000).toFixed(2)+'억원':v.toLocaleString('ko-KR')+'원';};
 const fmt2=n=>n===0?'0원':fmt(n); // fmt과 동일하나 0은 '-' 대신 '0원'으로 표시(세액 0원과 미입력을 구분)
@@ -184,19 +193,33 @@ function ltcgRate(years){if(years>=15)return 30;if(years>=3)return years*2;retur
 function computeActualTax(mval,tval,양부,증의,증재,rs){
   const acq=pInt(S.acq_amt),nec=pInt(S.nec_amt);
   const transferPrice=양부?mval:tval; // 부당행위 해당 시 시가로 양도가액 재계산 (소득세법 §101)
-  const gain=Math.max(transferPrice-acq-nec,0);
+  const gainTotal=Math.max(transferPrice-acq-nec,0);
   const ym=heldYM(S.acq_date,S.dt);
   const years=ym?ym.y:0;
   const adjArea=S.adj_area==='Y';
-  const heavy=adjArea&&(S.house_cnt==='2'||S.house_cnt==='3')&&!!S.dt&&S.dt>='2026-05-10'&&!S.mitigate; // 다주택자 중과 유예 종료(2026.5.9.자), 시행령 제36129호
-  const dedRate=heavy?0:ltcgRate(years);
-  const ltcgDed=Math.round(gain*dedRate/100);
-  const incomeAmt=gain-ltcgDed;
-  const basicDed=2500000; // 양도소득 기본공제, 소득세법 §103
-  const taxBase=Math.max(incomeAmt-basicDed,0);
+  const isOne=S.house_cnt==='1';
+  const exempt1=isOne&&S.exempt1==='Y'; // 1세대1주택 비과세 요건(2년 보유, 필요시 2년 거주) 충족, 소득세법 §89①3·시행령 §154
+  const heavy=!isOne&&adjArea&&(S.house_cnt==='2'||S.house_cnt==='3')&&!!S.dt&&S.dt>='2026-05-10'&&!S.mitigate; // 다주택자 중과 유예 종료(2026.5.9.자), 시행령 제36129호
+
+  let exemptFull=false,taxableRatio=1,gain=gainTotal,dedRate=heavy?0:ltcgRate(years),liveYears=0,specialDed=false;
+  if(exempt1){
+    if(transferPrice<=1200000000){
+      exemptFull=true; // 고가주택 기준(12억) 이하 — 전액 비과세, 소득세법 §89①3
+    }else{
+      taxableRatio=(transferPrice-1200000000)/transferPrice; // 12억 초과분 과세대상 비율
+      gain=Math.round(gainTotal*taxableRatio);
+      liveYears=Math.max(parseInt(S.live_yr)||0,0);
+      dedRate=Math.min(Math.min(years*4,40)+Math.min(liveYears*4,40),80); // 1세대1주택 특례 장특공제(보유·거주 각 연4%, 최대80%), 소득세법 §95② 별표2
+      specialDed=true;
+    }
+  }
+  const ltcgDed=exemptFull?0:Math.round(gain*dedRate/100);
+  const incomeAmt=exemptFull?0:gain-ltcgDed;
+  const basicDed=exemptFull?0:2500000; // 양도소득 기본공제, 소득세법 §103
+  const taxBase=exemptFull?0:Math.max(incomeAmt-basicDed,0);
   const surcharge=heavy?(S.house_cnt==='2'?20:30):0;
   const b=bracket(taxBase,TB_TRANSFER);
-  const calcTax=Math.max(Math.round(taxBase*(b.r+surcharge)/100-b.d),0);
+  const calcTax=exemptFull?0:Math.max(Math.round(taxBase*(b.r+surcharge)/100-b.d),0);
   const localTax=Math.round(calcTax*0.1); // 지방소득세(소득분), 지방세법 §92
   const transferTotal=calcTax+localTax;
   let gift=null;
@@ -209,7 +232,26 @@ function computeActualTax(mval,tval,양부,증의,증재,rs){
     const gTotal=gCalc-gReportDed;
     gift={ded:gd,base:gBase,rate:gb.r,pgong:gb.d,calc:gCalc,reportDed:gReportDed,total:gTotal};
   }
-  return{acq,nec,transferPrice,gain,ym,years,heavy,dedRate,ltcgDed,incomeAmt,basicDed,taxBase,surcharge,rate:b.r,pgong:b.d,calcTax,localTax,transferTotal,gift};
+  return{acq,nec,transferPrice,gainTotal,gain,ym,years,heavy,exempt1,exemptFull,taxableRatio,specialDed,liveYears,dedRate,ltcgDed,incomeAmt,basicDed,taxBase,surcharge,rate:b.r,pgong:b.d,calcTax,localTax,transferTotal,gift};
+}
+/* 취득세 간이계산 (매수인 부담) — 지방세법 §11①8, §13의2, 지방세법 시행령 §28의4 */
+function calcAcqTax(price,cnt,adj,over85){
+  if(!price)return null;
+  let heavy,rate;
+  if(cnt==='1'){heavy=false;}
+  else if(cnt==='2'){heavy=adj;}
+  else{heavy=true;} // 3주택 이상은 비조정지역도 중과 대상
+  if(heavy){
+    rate=cnt==='2'?8:(cnt==='3'?(adj?12:8):12); // 조정 2주택 8% · 조정 3주택+/비조정 4주택+ 12% · 비조정 3주택 8%
+  }else{
+    rate=price<=600000000?1:price<=900000000?Math.round(((price*2/300000000)-3)*10000)/10000:3; // 6억 이하 1%, 6~9억 선형, 9억 초과 3%
+  }
+  const acqTax=Math.round(price*rate/100);
+  const eduRate=heavy?0.4:rate*0.1; // 지방교육세, 지방세법 §151
+  const eduTax=Math.round(price*eduRate/100);
+  const siRate=over85?(heavy?(rate>=12?1.0:0.6):0.2):0; // 농어촌특별세(전용 85㎡ 초과시만), 농특세법 §5
+  const siTax=Math.round(price*siRate/100);
+  return{rate,heavy,acqTax,eduRate,eduTax,siRate,siTax,total:acqTax+eduTax+siTax};
 }
 function renderProg(){document.getElementById('pb').innerHTML=STEPS.map((s,i)=>`<div class="pi"><div class="pt ${i<=S.step?'on':''}"></div><div class="pl ${i<=S.step?'on':''}">${s}</div></div>`).join('');}
 function renderStep(){
@@ -363,6 +405,7 @@ function renderStep(){
     ${S.tx==='양도'&&tval>0&&isSp&&mval>0?(()=>{
       const at=computeActualTax(mval,tval,양부,증의,증재,rs);
       const ready=S.acq_amt&&S.acq_date;
+      const acqt=calcAcqTax(tval,S.buy_house_cnt,S.adj_area==='Y',S.area85==='Y');
       return `<div class="card">
       <div class="rh">실제 세금 계산</div>
       <div class="g3c taxin">
@@ -382,16 +425,44 @@ function renderStep(){
         </select></div>
       </div>
       ${S.adj_area==='Y'&&S.house_cnt!=='1'?`<label class="ckrow"><input type="checkbox" ${S.mitigate?'checked':''} onchange="S.mitigate=this.checked;go()"> 2026.2.12 당시 임대 중이거나 전세권이 설정되어 중과 배제 요건 충족</label>`:''}
+      ${S.house_cnt==='1'?`<div class="g2 taxin" style="margin-top:10px">
+        <div><label>1세대1주택 비과세 요건(2년 보유·필요시 2년 거주) 충족 여부</label><select class="selin" onchange="S.exempt1=this.value;go()">
+          <option value="N" ${S.exempt1==='N'?'selected':''}>미충족 / 해당없음</option>
+          <option value="Y" ${S.exempt1==='Y'?'selected':''}>충족</option>
+        </select></div>
+        ${S.exempt1==='Y'?`<div><label>거주기간 (년, 고가주택 12억 초과분 특례공제용)</label><input type="text" value="${S.live_yr}" placeholder="예: 10" oninput="S.live_yr=this.value.replace(/[^0-9]/g,'');go()"></div>`:''}
+      </div>`:''}
       <div class="div"></div>
-      ${!ready?`<div class="no-siga">⚠️ 취득가액 · 취득일자를 입력하면 실제 양도소득세를 계산합니다.</div>`:`
+      ${!ready?`<div class="no-siga">⚠️ 취득가액 · 취득일자를 입력하면 실제 양도소득세를 계산합니다.</div>`:at.exemptFull?`
       <div class="txb">
-        <div class="txbt">① 양도소득세 ${at.heavy?`<span class="heavy-tag">다주택 중과 (기본세율+${at.surcharge}%p)</span>`:`<span class="normal-tag">일반과세</span>`}</div>
-        <div class="txbl">소득세법 §55·§95·§104 | ${at.ym?`보유기간 ${at.ym.y}년 ${at.ym.m}개월`:''}${at.heavy?' · 장기보유특별공제 배제 (소득세법 §95②)':''}</div>
+        <div class="txbt">① 양도소득세 <span class="normal-tag">1세대1주택 비과세</span></div>
+        <div class="txbl">소득세법 §89①3 | 양도가액 ${fmt2(at.transferPrice)} ≤ 12억원 — 고가주택 기준 이하로 전액 비과세</div>
+        <div class="obox" style="margin-top:0"><div class="ot">✅ 양도소득세 납부세액 0원 (예정신고 대상에서도 제외)</div></div>
+      </div>
+      ${at.gift?`<div class="txb">
+        <div class="txbt" style="color:#854F0B">② 증여세 (매수인 · 수증자 부담) — 저가양수도 증여의제</div>
+        <div class="txbl">상증세법 §35②·§53·§56·§69 | 증여자와의 관계: ${sel?.l||''}</div>
+        <table class="result-table">
+          <tr><td>증여재산가액</td><td>${fmt2(증재)}</td></tr>
+          <tr><td>증여재산공제 (${sel?.l||''})</td><td>${fmt2(at.gift.ded)}</td></tr>
+          <tr class="hl"><td>과세표준</td><td>${fmt2(at.gift.base)}</td></tr>
+          <tr><td>적용세율</td><td>${at.gift.rate}% (누진공제 ${fmt2(at.gift.pgong)})</td></tr>
+          <tr class="hl"><td>산출세액</td><td>${fmt2(at.gift.calc)}</td></tr>
+          <tr><td>신고세액공제 (3%, §69)</td><td>-${fmt2(at.gift.reportDed)}</td></tr>
+          <tr class="final"><td>총 납부세액</td><td>${fmt2(at.gift.total)}</td></tr>
+        </table>
+      </div>`:`<div class="obox"><div class="ot">✅ 증여세는 발생하지 않습니다 (증여의제 미해당)</div></div>`}
+      `:`
+      <div class="txb">
+        <div class="txbt">① 양도소득세 ${at.heavy?`<span class="heavy-tag">다주택 중과 (기본세율+${at.surcharge}%p)</span>`:at.specialDed?`<span class="normal-tag">1세대1주택 특례(고가주택)</span>`:`<span class="normal-tag">일반과세</span>`}</div>
+        <div class="txbl">소득세법 §55·§95·§104 | ${at.ym?`보유기간 ${at.ym.y}년 ${at.ym.m}개월`:''}${at.heavy?' · 장기보유특별공제 배제 (소득세법 §95②)':''}${at.specialDed?` · 거주기간 ${at.liveYears}년 · 1세대1주택 특례공제(§95② 별표2) 적용`:''}</div>
         <table class="result-table">
           <tr><td>양도가액${양부?' (시가 적용, §101)':' (실제 거래가)'}</td><td>${fmt2(at.transferPrice)}</td></tr>
           <tr><td>취득가액</td><td>${fmt2(at.acq)}</td></tr>
           <tr><td>필요경비</td><td>${fmt2(at.nec)}</td></tr>
-          <tr class="hl"><td>양도차익</td><td>${fmt2(at.gain)}</td></tr>
+          <tr class="hl"><td>전체 양도차익</td><td>${fmt2(at.gainTotal)}</td></tr>
+          ${at.specialDed?`<tr><td>과세대상 비율 ((양도가액－12억)÷양도가액)</td><td>${(at.taxableRatio*100).toFixed(2)}%</td></tr>
+          <tr class="hl"><td>과세대상 양도차익</td><td>${fmt2(at.gain)}</td></tr>`:''}
           <tr><td>장기보유특별공제 (${at.dedRate}%)</td><td>${fmt2(at.ltcgDed)}</td></tr>
           <tr class="hl"><td>양도소득금액</td><td>${fmt2(at.incomeAmt)}</td></tr>
           <tr><td>양도소득 기본공제</td><td>${fmt2(at.basicDed)}</td></tr>
@@ -416,12 +487,248 @@ function renderStep(){
         </table>
       </div>
       <div style="background:#fff5f5;border:1px solid #f5c2c2;border-radius:10px;padding:12px 14px;margin-top:4px;font-size:12px;color:#8a2020"><strong>⚠️ 이 거래로 실제 발생하는 총 세부담</strong><br>• 매도인 양도소득세: <strong>${fmt2(at.transferTotal)}</strong><br>• 매수인 증여세: <strong>${fmt2(at.gift.total)}</strong><br>• 합계: <strong>${fmt2(at.transferTotal+at.gift.total)}</strong></div>`:`<div class="obox"><div class="ot">✅ 증여세는 발생하지 않습니다 (증여의제 미해당)</div></div>`}
-      <div class="calc-note">※ 일반과세 원칙에 따른 개산이며, 1세대1주택 비과세·거주요건 특례, 조합원입주권, 취득세 등은 반영되지 않았습니다. 다주택 중과는 2026.5.9.자로 유예가 종료되어 2026.5.10. 이후 조정대상지역 내 양도분부터 부활 적용됩니다. 실제 신고 시 정밀 검토가 필요합니다.</div>
       `}
+      <div class="div"></div>
+      <div class="txb">
+        <div class="txbt">③ 취득세 (매수인 부담, 간이계산)</div>
+        <div class="txbl">지방세법 §11①8·§13의2, 지방세법 시행령 §28의4, 농어촌특별세법 §5</div>
+        <div class="g2" style="margin-bottom:8px">
+          <div><label>매수인 취득 후 총 주택 수 (본건 포함)</label><select class="selin" onchange="S.buy_house_cnt=this.value;go()">
+            <option value="1" ${S.buy_house_cnt==='1'?'selected':''}>1주택</option>
+            <option value="2" ${S.buy_house_cnt==='2'?'selected':''}>2주택</option>
+            <option value="3" ${S.buy_house_cnt==='3'?'selected':''}>3주택</option>
+            <option value="4" ${S.buy_house_cnt==='4'?'selected':''}>4주택 이상 / 법인</option>
+          </select></div>
+          <div><label>전용면적 85㎡ 초과 여부</label><select class="selin" onchange="S.area85=this.value;go()">
+            <option value="N" ${S.area85==='N'?'selected':''}>85㎡ 이하</option>
+            <option value="Y" ${S.area85==='Y'?'selected':''}>85㎡ 초과</option>
+          </select></div>
+        </div>
+        ${acqt?`<table class="result-table">
+          <tr><td>과세표준 (실제 거래가액)</td><td>${fmt2(tval)}</td></tr>
+          <tr><td>취득세율${acqt.heavy?' (중과)':''}</td><td>${acqt.rate}%</td></tr>
+          <tr><td>취득세</td><td>${fmt2(acqt.acqTax)}</td></tr>
+          <tr><td>지방교육세 (${acqt.eduRate}%)</td><td>${fmt2(acqt.eduTax)}</td></tr>
+          <tr><td>농어촌특별세 (${acqt.siRate}%)</td><td>${fmt2(acqt.siTax)}</td></tr>
+          <tr class="final"><td>총 납부세액 (매수인)</td><td>${fmt2(acqt.total)}</td></tr>
+        </table>`:`<div class="no-siga" style="margin-top:0">⚠️ 예정 거래가가 입력되지 않아 계산할 수 없습니다.</div>`}
+      </div>
+      <div class="calc-note">※ 일반과세 원칙에 따른 간이 계산이며, 일시적 2주택 특례, 조합원입주권, 분양권, 상생임대주택 거주요건 특례 등 세부 특례는 반영되지 않았습니다. 취득세 과세표준은 실제 거래가액을 기준으로 하였으며, 특수관계자 저가양수에 대한 지방세법상 시가인정액 적용 여부는 별도 검토가 필요합니다. 다주택 중과는 2026.5.9.자로 유예가 종료되어 2026.5.10. 이후 조정대상지역 내 양도분부터 부활 적용됩니다. 실제 신고 시 정밀 검토가 필요합니다.</div>
+      ${ready?`<div class="btn-row" style="margin-top:14px"><button class="btn" onclick="printReport('client')">📄 고객용 보고서 출력</button><button class="btn" onclick="printReport('full')">🗂 내부 워킹페이퍼 출력</button></div>`:''}
     </div>`;
     })():''}
-    <div class="btn-row"><button class="btn" onclick="S.step=3;go()">← 수정</button><button class="btn" onclick="S={step:0,tx:'',sub:'일반매매',dt:'',rel:'',sim_date:'',sim_amt:'',ga1_date:'',ga1_amt:'',ga2_date:'',ga2_amt:'',rent_dep:'',rent_mon:'',rent_rate:'',gongsi:'',tp:'',acq_amt:'',acq_date:'',nec_amt:'',adj_area:'N',house_cnt:'1',mitigate:false};go()">처음부터</button></div>`;
+    <div class="btn-row"><button class="btn" onclick="S.step=3;go()">← 수정</button><button class="btn" onclick="S={step:0,tx:'',sub:'일반매매',dt:'',rel:'',sim_date:'',sim_amt:'',ga1_date:'',ga1_amt:'',ga2_date:'',ga2_amt:'',rent_dep:'',rent_mon:'',rent_rate:'',gongsi:'',tp:'',acq_amt:'',acq_date:'',nec_amt:'',adj_area:'N',house_cnt:'1',mitigate:false,exempt1:'N',live_yr:'',buy_house_cnt:'1',area85:'N'};go()">처음부터</button></div>`;
   }
+}
+/* ===== 보고서 출력 (고객용 요약 / 내부 워킹페이퍼) ===== */
+function todayKR(){const d=new Date();return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일`;}
+function todayISO(){const d=new Date();return d.toISOString().split('T')[0];}
+function docNo(){const d=new Date();return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;}
+function gatherCase(){
+  const{items,adopted,s,e}=determineSiga();
+  const mval=adopted?.amt||0;
+  const tval=pInt(S.tp);
+  const rs=mval?{yi:Math.min(mval*.05,3e8),gi:Math.min(mval*.30,3e8)}:null;
+  if(rs){rs.yl=mval-rs.yi;rs.gl=mval-rs.gi;rs.safe=Math.max(rs.yl,rs.gl);}
+  const diff=mval-tval;
+  const sel=RELS.find(r=>r.id===S.rel);
+  const isSp=sel&&sel.id!=='없음';
+  const 양부=tval>0&&isSp&&mval>0&&diff>=rs?.yi;
+  const 증의=tval>0&&isSp&&mval>0&&diff>=rs?.gi;
+  const 증재=증의?diff-rs.gi:0;
+  let at=null,acqt=null;
+  if(S.tx==='양도'&&tval>0&&isSp&&mval>0&&S.acq_amt&&S.acq_date){
+    at=computeActualTax(mval,tval,양부,증의,증재,rs);
+    acqt=calcAcqTax(tval,S.buy_house_cnt,S.adj_area==='Y',S.area85==='Y');
+  }
+  return{items,adopted,s,e,mval,tval,rs,diff,sel,isSp,양부,증의,증재,at,acqt};
+}
+const REPORT_CSS=`
+@page{size:A4;margin:20mm 18mm 22mm 18mm}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans CJK KR','Malgun Gothic',sans-serif;color:#1a1d23;font-size:11.5px;line-height:1.65}
+.header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0B1F3A;padding-bottom:14px;margin-bottom:22px}
+.firm{font-size:15px;font-weight:700;color:#0B1F3A}
+.firm-sub{font-size:10px;color:#6b7a90;margin-top:2px}
+.doc-meta{text-align:right;font-size:10px;color:#6b7a90;line-height:1.8}
+.title{font-size:20px;font-weight:900;color:#0B1F3A;margin:6px 0 4px}
+.subtitle{font-size:11.5px;color:#4a6080;margin-bottom:22px}
+.to-line{font-size:12px;margin-bottom:20px;padding:10px 14px;background:#f5f6fa;border-radius:6px}
+.sec{margin-bottom:20px}
+.sec-title{font-size:13px;font-weight:700;color:#fff;background:#0B1F3A;padding:7px 12px;border-radius:5px;margin-bottom:10px}
+.sub-title{font-size:10.5px;font-weight:700;color:#1a5cb8;margin:10px 0 5px;border-left:3px solid #1a5cb8;padding-left:7px}
+table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px}
+th,td{border:1px solid #dde3ed;padding:7px 10px;text-align:left;vertical-align:top}
+th{background:#eaf2ff;color:#0B1F3A;font-weight:700;width:32%}
+.result-tbl th{background:#f5f6fa;color:#4a6080;font-weight:700;width:auto;text-align:left}
+.result-tbl td{text-align:right}
+.result-tbl td:first-child{text-align:left;color:#4a6080}
+.result-tbl tr.hl td{background:#f8fafd;font-weight:700}
+.result-tbl tr.final td{background:#eaf2ff;font-weight:900;color:#0B1F3A;border-top:2px solid #0B1F3A;font-size:12.5px}
+.verdict{border-radius:8px;padding:12px 16px;margin-bottom:8px}
+.verdict.ok{background:#e8f5ef;border:1px solid #9fd8bb}
+.verdict.na{background:#eaf2ff;border:1px solid #c2d8f5}
+.verdict .vm{font-weight:700;font-size:12.5px}
+.verdict.ok .vm{color:#1a7a4a}
+.verdict.na .vm{color:#1a5cb8}
+.verdict .vs{font-size:10.5px;color:#6b7a90;margin-top:2px}
+.note-box{background:#fff8ee;border:1px solid #f5d88a;border-radius:8px;padding:12px 16px;font-size:10.5px;color:#854F0B;line-height:1.8}
+.note-box b{color:#633806}
+.assump-box{background:#fff5f5;border:1px solid #f5c2c2;border-radius:6px;padding:10px 14px;font-size:9.7px;color:#8a2020;line-height:1.8;margin-bottom:8px}
+.assump-box b{color:#c23030}
+.callout{background:#0B1F3A;border-radius:8px;padding:16px 18px;text-align:center;margin:14px 0}
+.callout .cl{font-size:11px;color:#c2d8f5;margin-bottom:4px}
+.callout .ca{font-size:24px;font-weight:900;color:#fff}
+.callout .cn{font-size:10px;color:#8aa8d0;margin-top:4px}
+.law-tag{display:inline-block;font-size:9px;color:#1a5cb8;background:#eaf2ff;padding:2px 7px;border-radius:4px;margin-left:4px}
+.stamp{font-size:9px;font-weight:700;color:#c23030;border:1.5px solid #c23030;border-radius:4px;padding:3px 9px}
+.pagebreak{page-break-before:always}
+.foot{margin-top:26px;padding-top:12px;border-top:1px solid #dde3ed;font-size:9.5px;color:#9aaabb;line-height:1.7}
+`;
+function reportHeader(kind){
+  return `<div class="header">
+    <div><div class="firm">${FIRM.name}</div><div class="firm-sub">${FIRM.addr} · ${FIRM.tel}</div></div>
+    <div style="text-align:right">
+      ${kind==='full'?'<div class="stamp">CONFIDENTIAL · 내부보관용</div><div class="doc-meta" style="margin-top:6px">':'<div class="doc-meta">'}
+      작성일: ${todayKR()}<br>문서번호: ${kind==='full'?'WP':'TR'}-${docNo()}<br>담당: ${FIRM.rep}</div>
+    </div>
+  </div>`;
+}
+function buildClientReportHTML(c){
+  const{mval,tval,rs,diff,sel,isSp,양부,증의,증재,at,acqt,adopted,s,e}=c;
+  const totalTax=(at?at.transferTotal:0)+(at?.gift?at.gift.total:0)+(acqt?acqt.total:0);
+  return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>세무검토 결과 안내</title><style>${REPORT_CSS}</style></head><body>
+  ${reportHeader('client')}
+  <div class="title">부동산 ${S.tx} 세무검토 결과 안내</div>
+  <div class="subtitle">${isSp?'특수관계인 간 ':''}거래에 대한 시가 판단 및 예상 세부담 검토</div>
+  <div class="to-line">귀하께서 문의하신 건에 대해 관련 법령(소득세법·상증세법·지방세법)에 근거하여 검토한 결과를 안내드립니다.</div>
+  <div class="sec"><div class="sec-title">1. 거래 개요</div><table>
+    <tr><th>거래 유형</th><td>부동산 ${S.tx}${S.tx==='양도'?' ('+S.sub+')':''}${isSp?' · 특수관계인 간 거래':''}</td></tr>
+    ${mval>0?`<tr><th>확정 시가</th><td>${fmt(mval)}</td></tr>`:''}
+    ${tval>0?`<tr><th>결정 매매금액</th><td>${fmt(tval)} (시가 대비 ${mval?(tval/mval*100).toFixed(1):'-'}%)</td></tr><tr><th>시가 대비 할인액</th><td>${fmt(diff)}</td></tr>`:''}
+  </table></div>
+  ${adopted?`<div class="sec"><div class="sec-title">2. 시가 산정 근거</div><table>
+    <tr><th>채택 방법</th><td>${adopted.name} <span class="law-tag">${adopted.law}</span></td></tr>
+    <tr><th>판단 근거</th><td>${adopted.reason||''}</td></tr>
+  </table></div>`:''}
+  ${isSp&&mval>0&&tval>0?`<div class="sec"><div class="sec-title">3. 세목별 검토 결론</div>
+    ${S.tx==='양도'?`<div class="verdict ${양부?'na':'ok'}"><div class="vm">① 양도소득세 — 부당행위계산부인 ${양부?'해당':'해당 없음'}</div><div class="vs">할인액 ${fmt(diff)} ${양부?'≥':'<'} 임계치 ${fmt(rs.yi)}(시가×5%)</div></div>`:''}
+    <div class="verdict ${증의?'na':'ok'}"><div class="vm">② 증여세 — 저가양수도 증여의제 ${증의?'해당':'해당 없음'}</div><div class="vs">할인액 ${fmt(diff)} ${증의?'≥':'<'} 임계치 ${fmt(rs.gi)}(시가×30%)</div></div>
+  </div>`:''}
+  ${at?`<div class="sec"><div class="sec-title">4. 예상 세부담</div>
+    ${at.exemptFull?`<div class="verdict ok"><div class="vm">양도소득세 — 1세대1주택 비과세</div><div class="vs">양도가액 12억원 이하로 전액 비과세</div></div>`:`<table class="result-tbl">
+      <tr><th>양도가액</th><td>${fmt(at.transferPrice)}</td></tr>
+      <tr><th>취득가액</th><td>${fmt(at.acq)}</td></tr>
+      <tr class="hl"><th>양도차익</th><td>${fmt(at.gainTotal)}</td></tr>
+      <tr><th>장기보유특별공제 (${at.dedRate}%)</th><td>${fmt(at.ltcgDed)}</td></tr>
+      <tr class="hl"><th>과세표준</th><td>${fmt(at.taxBase)}</td></tr>
+      <tr class="final"><th>양도소득세 총 납부세액</th><td>${fmt(at.transferTotal)}</td></tr>
+    </table>`}
+    ${at.gift?`<table class="result-tbl" style="margin-top:10px">
+      <tr><th>증여재산가액</th><td>${fmt(증재)}</td></tr>
+      <tr><th>증여재산공제 (${sel?.l||''})</th><td>${fmt(at.gift.ded)}</td></tr>
+      <tr class="final"><th>증여세 총 납부세액</th><td>${fmt(at.gift.total)}</td></tr>
+    </table>`:''}
+    ${acqt?`<table class="result-tbl" style="margin-top:10px">
+      <tr><th>취득세율${acqt.heavy?' (중과)':''}</th><td>${acqt.rate}%</td></tr>
+      <tr class="final"><th>취득세 등 총 납부세액 (매수인)</th><td>${fmt(acqt.total)}</td></tr>
+    </table>`:''}
+    <div class="callout"><div class="cl">예상 총 세부담</div><div class="ca">${fmt(totalTax)}</div><div class="cn">양도소득세${at.gift?' + 증여세':''}${acqt?' + 취득세':''} 합계</div></div>
+  </div>`:''}
+  <div class="note-box"><b>유의사항</b><br>
+  · 본 검토는 현재까지 확인된 정보를 기초로 한 예상 세액이며, 실제 신고 시 확정 거래조건 및 증빙자료에 따라 세액이 달라질 수 있습니다.<br>
+  · 보유기간·거주기간 등 시점에 따라 공제율이 달라질 수 있으니 잔금청산일자 확정 시 재검토가 필요합니다.<br>
+  · 일시적 2주택 특례, 조합원입주권 등 세부 특례는 본 검토에 포함되지 않았습니다.</div>
+  <div class="foot">본 보고서는 ${todayKR()} 기준 시행 중인 세법을 근거로 작성되었으며, 세법 개정 및 확정 거래조건에 따라 내용이 변경될 수 있습니다.<br>${FIRM.name}${FIRM.email?' · '+FIRM.email:''}</div>
+  </body></html>`;
+}
+function buildFullReportHTML(c){
+  const{items,mval,tval,rs,diff,sel,isSp,양부,증의,증재,at,acqt,adopted,s,e}=c;
+  return `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>내부 워킹페이퍼</title><style>${REPORT_CSS}</style></head><body>
+  ${reportHeader('full')}
+  <div class="title">${S.tx} 세무검토 — 내부 워킹페이퍼</div>
+  <div class="subtitle">전체 입력값 · 계산 과정 · 법령 근거를 포함한 상세 기록 (고객 미배포용)</div>
+  <div class="sec"><div class="sec-title">1. 입력값 전체 목록</div><table>
+    <tr><th>거래유형</th><td>${S.tx}${S.tx==='양도'?' ('+S.sub+')':''}</td></tr>
+    <tr><th>기준일자</th><td>${S.dt||'-'}</td></tr>
+    <tr><th>특수관계</th><td>${sel?sel.l:'-'}</td></tr>
+    <tr><th>확정 시가</th><td>${fmt(mval)}${adopted?' · '+adopted.name:''}</td></tr>
+    ${tval>0?`<tr><th>결정 매매금액</th><td>${fmt(tval)}</td></tr>`:''}
+    ${S.acq_amt?`<tr><th>취득가액 / 취득일</th><td>${fmt(pInt(S.acq_amt))} / ${S.acq_date||'-'}</td></tr>`:''}
+    ${S.nec_amt?`<tr><th>필요경비</th><td>${fmt(pInt(S.nec_amt))}</td></tr>`:''}
+    <tr><th>양도인 보유주택수 / 조정지역</th><td>${S.house_cnt}주택 / ${S.adj_area==='Y'?'조정대상지역':'비조정대상지역'}</td></tr>
+  </table></div>
+  ${items&&items.length?`<div class="sec"><div class="sec-title">2. 시가 판단 상세</div><table>
+    <tr><th>우선순위</th><th>방법</th><th>금액</th><th>판정</th></tr>
+    ${items.map(r=>`<tr><td>${r.rank}순위</td><td>${r.name} <span class="law-tag">${r.law}</span></td><td>${fmt(r.amt)}</td><td>${r.valid?'유효':'무효'}${adopted&&r.name===adopted.name&&r.amt===adopted.amt?' · 채택':''}</td></tr>`).join('')}
+  </table></div>`:''}
+  ${isSp&&mval>0?`<div class="sec"><div class="sec-title">3. 저가거래 안전금액 분석</div><table class="result-tbl">
+    <tr><th>양도세 임계치 (시가×5%, 3억 한도)</th><td>${fmt(rs.yi)}</td></tr>
+    <tr><th>증여세 임계치 (시가×30%, 3억 한도)</th><td>${fmt(rs.gi)}</td></tr>
+    <tr class="final"><th>두 세목 모두 안전한 최저 거래가액</th><td>${fmt(rs.safe)} 초과</td></tr>
+  </table>
+  ${tval>0?`<div class="sub-title">예정 거래가 판정</div><table>
+    <tr><td>할인액</td><td>${fmt(diff)}</td></tr>
+    <tr><td>양도세 부당행위</td><td>${양부?'해당':'미해당'} (${fmt(diff)} ${양부?'≥':'<'} ${fmt(rs.yi)})</td></tr>
+    <tr><td>증여세 의제</td><td>${증의?'해당':'미해당'} (${fmt(diff)} ${증의?'≥':'<'} ${fmt(rs.gi)})</td></tr>
+    ${증의?`<tr><td>증여재산가액</td><td>${fmt(증재)}</td></tr>`:''}
+  </table>`:''}</div>`:''}
+  ${at?`<div class="pagebreak"></div><div class="sec"><div class="sec-title">4. 양도소득세 산출 전체 내역</div>
+  ${at.exemptFull?`<div class="assump-box" style="background:#e8f5ef;border-color:#9fd8bb;color:#1a7a4a"><b>1세대1주택 비과세</b> — 양도가액 ${fmt(at.transferPrice)} ≤ 12억원, 소득세법 §89①3에 따라 전액 비과세</div>`:`<table class="result-tbl">
+    <tr><th>양도가액${양부?' (시가 적용, §101)':''}</th><td>${fmt(at.transferPrice)}</td></tr>
+    <tr><th>취득가액</th><td>${fmt(at.acq)}</td></tr>
+    <tr><th>필요경비</th><td>${fmt(at.nec)}</td></tr>
+    <tr class="hl"><th>전체 양도차익</th><td>${fmt(at.gainTotal)}</td></tr>
+    ${at.specialDed?`<tr><th>과세대상 비율</th><td>${(at.taxableRatio*100).toFixed(2)}%</td></tr><tr class="hl"><th>과세대상 양도차익</th><td>${fmt(at.gain)}</td></tr>`:''}
+    <tr><th>보유기간</th><td>${at.ym?at.ym.y+'년 '+at.ym.m+'개월':'-'}</td></tr>
+    <tr><th>장기보유특별공제 (${at.dedRate}%)</th><td>${fmt(at.ltcgDed)}</td></tr>
+    <tr class="hl"><th>양도소득금액</th><td>${fmt(at.incomeAmt)}</td></tr>
+    <tr><th>양도소득 기본공제</th><td>${fmt(at.basicDed)}</td></tr>
+    <tr class="hl"><th>과세표준</th><td>${fmt(at.taxBase)}</td></tr>
+    <tr><th>적용세율</th><td>${at.rate}%${at.surcharge?'+'+at.surcharge+'%p':''} (누진공제 ${fmt(at.pgong)})</td></tr>
+    <tr class="hl"><th>산출세액</th><td>${fmt(at.calcTax)}</td></tr>
+    <tr><th>지방소득세</th><td>${fmt(at.localTax)}</td></tr>
+    <tr class="final"><th>총 납부세액</th><td>${fmt(at.transferTotal)}</td></tr>
+  </table>`}
+  </div>
+  <div class="sec"><div class="sec-title">5. 증여세 검토</div>${at.gift?`<table class="result-tbl">
+    <tr><th>증여재산가액</th><td>${fmt(증재)}</td></tr>
+    <tr><th>증여재산공제 (${sel?.l||''})</th><td>${fmt(at.gift.ded)}</td></tr>
+    <tr class="hl"><th>과세표준</th><td>${fmt(at.gift.base)}</td></tr>
+    <tr><th>적용세율</th><td>${at.gift.rate}% (누진공제 ${fmt(at.gift.pgong)})</td></tr>
+    <tr><th>신고세액공제 (3%)</th><td>-${fmt(at.gift.reportDed)}</td></tr>
+    <tr class="final"><th>총 납부세액</th><td>${fmt(at.gift.total)}</td></tr>
+  </table>`:`<table><tr><th>결론</th><td>저가양수도 증여의제 미해당 — 증여세 없음</td></tr></table>`}</div>
+  ${acqt?`<div class="sec"><div class="sec-title">6. 취득세 간이계산 (매수인 부담)</div><table class="result-tbl">
+    <tr><th>과세표준</th><td>${fmt(tval)}</td></tr>
+    <tr><th>취득세율${acqt.heavy?' (중과)':''}</th><td>${acqt.rate}%</td></tr>
+    <tr><th>취득세</th><td>${fmt(acqt.acqTax)}</td></tr>
+    <tr><th>지방교육세</th><td>${fmt(acqt.eduTax)}</td></tr>
+    <tr><th>농어촌특별세</th><td>${fmt(acqt.siTax)}</td></tr>
+    <tr class="final"><th>총 납부세액</th><td>${fmt(acqt.total)}</td></tr>
+  </table></div>`:''}`:''}
+  <div class="sec"><div class="sec-title">7. 가정사항 및 재확인 필요 항목</div>
+    <div class="assump-box"><b>잔금청산(양도)예정일자</b> — 기준일자가 실제 확정일과 다를 경우 보유기간·거주기간 산정이 달라져 재계산이 필요합니다.</div>
+    <div class="assump-box"><b>필요경비·증빙</b> — 세부 항목과 증빙 확보 여부에 따라 인정 범위가 달라질 수 있습니다 (소득세법 §97, 시행령 §163).</div>
+    <div class="assump-box"><b>다주택 중과 유예</b> — 2026.5.9.자로 유예가 종료되어 2026.5.10. 이후 조정대상지역 내 양도분부터 부활 적용됩니다 (소득세법 시행령 제36129호).</div>
+  </div>
+  <div class="sec"><div class="sec-title">8. 참고 법령</div><table>
+    <tr><td>소득세법 §55·§89·§95·§97·§101·§103·§105</td><td>양도소득세 세율·비과세·필요경비·부당행위·기본공제·신고</td></tr>
+    <tr><td>소득세법 시행령 §98·§167·§176의2</td><td>특수관계인 범위·부당행위 기준·유사매매사례가액</td></tr>
+    <tr><td>상증세법 §35②·§49·§53·§56·§69</td><td>저가양수도 증여의제·시가평가기간·증여공제·세율·신고세액공제</td></tr>
+    <tr><td>지방세법 §11·§13의2·§92</td><td>취득세율·다주택 중과·지방소득세</td></tr>
+  </table></div>
+  <div class="foot">본 워킹페이퍼는 내부 검토·감사 대비 목적으로 작성되었으며, 고객에게는 별도 요약보고서만 배포합니다. 모든 산식은 본 계산기(siga-calc.html)의 로직과 동일합니다.<br>${FIRM.name} · 내부보관용</div>
+  </body></html>`;
+}
+function printReport(kind){
+  const c=gatherCase();
+  const html=kind==='client'?buildClientReportHTML(c):buildFullReportHTML(c);
+  const w=window.open('','_blank');
+  if(!w){alert('팝업이 차단되었습니다. 이 사이트의 팝업을 허용해주세요.');return;}
+  w.document.open();w.document.write(html);w.document.close();
+  w.onload=()=>{w.focus();w.print();};
+  setTimeout(()=>{try{w.focus();w.print();}catch(e){}},300);
 }
 function go(){renderProg();renderStep();}
 go();
